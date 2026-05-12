@@ -1,0 +1,113 @@
+#!/bin/sh
+
+module1="scull"
+device1="scull"
+modules2="misc-module"
+device2="misc-module"
+mode="664"
+
+
+load_scull() {
+  if [[ lsmod | grep -q "^$module1" ]]; then
+    echo "scull already loaded"
+  else
+    insmod $module1.ko $* || exit 1
+    major=$(awk "\$2=="$module1\" {print \$1}" /proc/devices)
+
+    rm -f /dev/${device1}[0-3]
+    mknod /dev/${device1}0 c $major 0
+    mknod /dev/${device1}1 c $major 1
+    mknod /dev/${device1}2 c $major 2
+    mknod /dev/${device1}3 c $major 3
+    ln -sf ${device1}0 /dev/${device1}
+    chmod $mode  /dev/${device1}[0-3]
+
+    rm -f /dev/${device1}pipe[0-3]
+    mknod /dev/${device1}pipe0 c $major 4
+    mknod /dev/${device1}pipe1 c $major 5
+    mknod /dev/${device1}pipe2 c $major 6
+    mknod /dev/${device1}pipe3 c $major 7
+    ln -sf ${device1}pipe0 /dev/${device1}pipe
+    chmod $mode  /dev/${device1}pipe[0-3]
+
+    rm -f /dev/${device1}single
+    mknod /dev/${device1}single  c $major 8
+    chmod $mode  /dev/${device1}single
+
+    rm -f /dev/${device1}uid
+    mknod /dev/${device1}uid   c $major 9
+    chmod $mode  /dev/${device1}uid
+
+    rm -f /dev/${device1}wuid
+    mknod /dev/${device1}wuid  c $major 10
+    chmod $mode  /dev/${device1}wuid
+
+    rm -f /dev/${device1}priv
+    mknod /dev/${device1}priv  c $major 11
+    chmod $mode  /dev/${device1}priv
+      
+    fi
+}
+
+unload_scull() {
+  
+  rmmod $module1 $* || exit 1
+
+  # Remove stale nodes
+
+  rm -f /dev/${device1} /dev/${device1}[0-3] 
+  rm -f /dev/${device1}pipe /dev/${device1}pipe[0-3]
+  rm -f /dev/${device1}single
+  rm -f /dev/${device1}uid
+  rm -f /dev/${device1}wuid
+}
+
+load_misc_module() {
+  if [[ lsmod | grep -q "^$modules2" ]]; then
+    echo "misc-module already loaded"
+  else
+    echo "Load our module, exit on failure"
+    insmod ./$modules2.ko $* || exit 1
+    echo "Get the major number (allocated with allocate_chrdev_region) from /proc/devices"
+    major=$(awk "\$2==\"$modules2\" {print \$1}" /proc/devices)
+    if [ ! -z ${major} ]; then
+        echo "Remove any existing /dev node for /dev/${device2}"
+        rm -f /dev/${device2}
+        echo "Add a node for our device at /dev/${device2} using mknod"
+        mknod /dev/${device2} c $major 0
+        echo "Change group owner to ${group}"
+        chgrp $group /dev/${device2}
+        echo "Change access mode to ${mode}"
+        chmod $mode  /dev/${device2}
+    else
+        echo "No device found in /proc/devices for driver ${modules2} (this driver may not allocate a device)"
+    fi
+  fi
+}
+
+unload_misc_module() {
+  rmmod $modules2 $* || exit 1
+  rm -f /dev/${device2}
+}
+
+case "$1" in 
+  start)
+    load_scull
+    load_misc_module
+    modprobe hello.ko
+    ;;
+  stop)
+    unload_scull
+    unload_misc_module
+    modprobe -r hello.ko
+    ;;
+  restart)
+    $0 stop
+    $0 start
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|restart}"
+    exit 1
+    ;;
+esac
+    

@@ -1,0 +1,5 @@
+
+config BR2_PACKAGE_LDD
+	bool "ldd"
+	help
+	  Uses to building and installing misc-modules and scull components to the root filesystem.
